@@ -30,30 +30,43 @@ jobs:
           java-version: 17
           cache: maven
 
+      - name: Prepare Maven Wrapper
+        run: chmod +x ./mvnw
+
       - name: Fix test-service migrations command
         working-directory: test-service
         run: |
           sed -i 's/, "3"//' docker-compose.yaml
           cat docker-compose.yaml
 
+      - name: Start PostgreSQL
+        working-directory: test-service
+        run: docker compose up -d postgres
+
+      - name: Run migrations
+        working-directory: test-service
+        run: docker compose run --rm migrate
+
       - name: Start test-service
         working-directory: test-service
-        run: docker compose up --build -d
+        run: docker compose up --build -d service
 
       - name: Wait for test-service
         run: |
           for i in {1..30}; do
-            if curl -s http://localhost:8080/api/time; then
+            if curl -fsS http://localhost:8080/api/time; then
               echo "test-service is available"
               exit 0
             fi
 
             echo "Waiting for test-service..."
-            docker compose -f test-service/docker-compose.yaml ps
+            docker compose -f test-service/docker-compose.yaml ps -a
+            docker compose -f test-service/docker-compose.yaml logs service --tail=50
             sleep 3
           done
 
           echo "test-service did not start"
+          docker compose -f test-service/docker-compose.yaml ps -a
           docker compose -f test-service/docker-compose.yaml logs
           exit 1
 
